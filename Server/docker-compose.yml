@@ -6,7 +6,7 @@ services:
     ports:
      - "8000"
     volumes:
-      - /usr/src/app/project/static
+      - ./project/static:/project/static
     command: /usr/local/bin/gunicorn -w 2 -b :8000 run
 
   nginx:
