@@ -1,0 +1,33 @@
+version: "2"
+services:
+  web:
+    restart: always
+    build: ./web
+    ports:
+     - "8000"
+    volumes:
+      - /usr/src/app/project/static
+    command: /usr/local/bin/gunicorn -w 2 -b :8000 run
+
+  nginx:
+    restart: always
+    build: ./nginx
+    ports:
+      - "80:80"
+    volumes:
+      - /www/static
+    volumes_from:
+      - web
+    depends_on:
+      - web
+
+  tfserver:
+    build: ./tfserver
+    ports:
+      - "9000:9000"
+    volumes:
+      - ./tfserver/models:/app/data/models/
+
+# docker stack deploy --compose-file ./docker-compose.yml maximedb/stack
+# docker stack deploy -c docker-compose.yml getstartedlab
+# docker stack rm getstartedlab
