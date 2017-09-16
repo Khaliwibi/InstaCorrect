@@ -8,17 +8,25 @@ app.controller('mainCtrl', function($scope, $http){
     var data = JSON.stringify({'sentence': $scope.textModel});
     var headers = {'Content-Type': 'application/json; charset=utf-8'};
     $http.post('/api/is_correct', data=data, headers=headers).then(function(response){
-      console.log(response)
+      correct_prob = response.data['correct'];
+      console.log('correct_prob', correct_prob)
+      if (correct_prob > 0.5) {
+        is_correct(correct_prob)
+      } else {
+        not_correct(correct_prob)
+      }
+    }).catch(function(error){
+      console.log(error)
     });
   }
   function is_correct(probability){
     $scope.state = "correct";
-    $scope.probability = 0.98;
+    $scope.probability = probability;
   }
 
   function not_correct(probability){
     $scope.state = "incorrect";
-    $scope.probability = 0.98;
+    $scope.probability = probability;
   }
 
 

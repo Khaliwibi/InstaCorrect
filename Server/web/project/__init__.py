@@ -31,9 +31,8 @@ def is_correct():
     # Check that the data received contains a sentence
     if 'sentence' not in data:
         return "Please give a sentence to correct", 400
-    text = data['sentence']
+    text = u""+data['sentence']
     # Cut the text into (possible) multiple sentences.
-    print(text)
     sentences = sent_tokenize(text)
     correct_probability = 1
     if len(sentences) > 10 | len(text) > 1000:
