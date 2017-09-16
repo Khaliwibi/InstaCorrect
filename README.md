@@ -10,7 +10,6 @@ A to Z implementation of a **deep learning** (french) spell checker:
 The ultimate goal of the project is to have a model that can effectively correct any french sentence for spell and grammatical mistakes. As this is probably a bit too much to ask for a first end-to-end model, the first step will be to classify bewteen erroneous and correct sentences.
 
 ## Data Gathering and Pre-Processing
-#### Dataset
 The first step is to find a relevant dataset. In this case, there are no pre-made dataset available. We will have to make our own! For that, I download all of the french translations from the (*European Parliament Proceedings Parallel Corpus 1996-2011*)[http://www.statmt.org/europarl/]. The french part contains around 2,190,579 sentences and 54,202,850 words. 
 This gives us a set of correct sentences, at least in theory. We now have to come up with a set of erroneous sentences. We will generate them from correct one. In /Data Generator/mistake.py, you will find a Class that can generate a correct sentence into an erroneous one.
 For example, it could map this correct sentence *Rien ne sert de courir, il faut partir à point* into *Rien ne sers de courir, il faut partir a point*. This mistake generator is still basic but at least we have somehting to start with.
@@ -26,3 +25,17 @@ Now that we have our dataset, we can define what our model will look like. For t
 1. An embedding layer. 
 2. A two layer RNN. 
 3. A dense layer
+
+The loss is defined as the softmax cross entropy. It is minimized with the AdamOptimizer and gradient clipping. The model is built using tensorflow.
+
+## Training and Inference
+The training and inference is done using a tensorflow estimator. It is really useful and allows to focus on the essential part of the model and not the usual plumbing associated with running a tensorflow model. Furthermore, it is really easy to export a trained model using an estimator.
+
+## Model Serving
+Once a model is exported. It can be served to the "real world" with tensorflow serving. That's were stuff gets more complicated for me. I had no real world experience with running a server, even less a C++ executing gRCP requests (I still not 100% sure of what is is). After a steep learning curve, I managed to assemble a stack of docker containers. One is a NGINX server, the second is a Flask app that serves the front-end and the last one is the actual tensorflow-serving server. Take a look at the "Server" directory of this repo. 
+
+## Front-end Application
+A basic front-end application that runs angularjs to take the text written and send an AJAX request to the Flask app. 
+
+## Contributions
+Feel free to contribute/comment/share this repo :-)
