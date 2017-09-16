@@ -5,8 +5,6 @@ services:
     build: ./web
     ports:
      - "8000"
-    volumes:
-      - ./project/static:/project/static
     command: /usr/local/bin/gunicorn -w 2 -b :8000 run
 
   nginx:
@@ -14,14 +12,9 @@ services:
     build: ./nginx
     ports:
       - "80:80"
-    volumes:
-      - /www/static
-    volumes_from:
-      - web
-    depends_on:
-      - web
 
   tfserver:
+    restart: always
     build: ./tfserver
     ports:
       - "9000:9000"
