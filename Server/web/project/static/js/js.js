@@ -5,7 +5,7 @@ app.controller('mainCtrl', function($scope, $http){
   $scope.state = "idle";
   $scope.correct = function(){
     $scope.state = "loading";
-    var data = {'sentence': $scope.textModel};
+    var data = JSON.stringify({'sentence': $scope.textModel});
     var headers = {'Content-Type': 'application/json; charset=utf-8'};
     $http.post('/api/is_correct', data=data, headers=headers).then(function(response){
       console.log(response)
