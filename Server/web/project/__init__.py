@@ -28,6 +28,9 @@ def hello_world():
 # curl -H "Content-Type: application/json" -X POST -d '{"sentence":"this is my sentence"}' http://0.0.0.0/api/is_correct
 def is_correct():
     data = request.get_json()
+    # Check that the data received contains a sentence
+    if 'sentence' not in data:
+        return "Please give a sentence to correct", 400
     text = data['sentence']
     # Cut the text into (possible) multiple sentences.
     print(text)
