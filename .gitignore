@@ -3,9 +3,9 @@ europarl-v7.fr-en.fr
 training.tfrecord
 validation.tfrecord
 testing.tfrecord
-*.meta
-*.index
-*.data*
+model**.meta
+model**.index
+model**.data*
 checkpoint
 events*
 eval/
