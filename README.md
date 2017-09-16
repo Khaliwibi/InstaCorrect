@@ -1,5 +1,5 @@
 # InstaCorrect
-A to Z implementation of a **deep learning** (french) spell checker:
+A to Z implementation of a **deep learning** (french) spell checker: (www.instacorrect.com)[http://www.instacorrect.com]
 * Data gathering and pre-processing
 * Model definition
 * Training and inference
