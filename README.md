@@ -19,11 +19,12 @@ Now we can create our dataset. It will consist of `TFRecord` file filled with `T
 2. The sentence length, i.e, the number of characters in this sentence
 3. The label, i.e, is this sentence correct or not.
 This dataset will be split up in three parts: traning, validation and testing.
+Furthermore, there is a dyanmic padding and bucketing of the examples as to optimize the training time.
 
 ## Model Definition
 Now that we have our dataset, we can define what our model will look like. For the moment, it is still basic as the goal was the have somehting running quickly. It will be further improved.
 1. An embedding layer. 
-2. A two layer RNN. 
+2. A two layer LSTMs newtork with dropout. 
 3. A dense layer
 
 The loss is defined as the softmax cross entropy. It is minimized with the AdamOptimizer and gradient clipping. The model is built using tensorflow.
@@ -36,6 +37,13 @@ Once a model is exported. It can be served to the "real world" with tensorflow s
 
 ## Front-end Application
 A basic front-end application that runs angularjs to take the text written and send an AJAX request to the Flask app. 
+
+## Results and conclusion
+After one epoch (~4M examples), the model achieves an accuracy of 95% on the validation set. This is already great! But in practice the model fails to detect basic errors. This is probably due to two things:
+* The mistake generator is not really good. It generates unlikely mistakes more than likely mistakes. Your model is only as good as the quality of your data.
+* The model does not know about a *subset* of french, i.e., the translation of the european parlaments talks. Not really representative of your every chit chat...
+
+How to improve the model ? Well the goal of this first version was to create a simple model but end-to-end. The next model will be a "predictive" one, it will try to correct your sentence instead of just saying whether it is correct or not. I will try to implement the following paper: [Sentence-Level Grammatical Error Identification as Sequence-to-Sequence Correction](https://arxiv.org/abs/1604.04677). I will also try to improve the mistake generator. 
 
 ## Contributions
 Feel free to contribute/comment/share this repo :-)
