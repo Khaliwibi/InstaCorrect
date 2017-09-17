@@ -26,7 +26,7 @@ app.controller('mainCtrl', function($scope, $http){
 
   function not_correct(probability){
     $scope.state = "incorrect";
-    $scope.probability = probability;
+    $scope.probability = 1- probability;
   }
 
 

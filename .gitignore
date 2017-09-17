@@ -10,6 +10,7 @@ checkpoint
 events*
 eval/
 **/eval/
+*.pbtxt
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
