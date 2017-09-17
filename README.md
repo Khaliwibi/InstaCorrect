@@ -33,7 +33,13 @@ The loss is defined as the softmax cross entropy. It is minimized with the AdamO
 The training and inference is done using a tensorflow estimator. It is really useful and allows to focus on the essential part of the model and not the usual plumbing associated with running a tensorflow model. Furthermore, it is really easy to export a trained model using an estimator.
 
 ## Model Serving
-Once a model is exported. It can be served to the "real world" with tensorflow serving. That's were stuff gets more complicated for me. I had no real world experience with running a server, even less a C++ executing gRCP requests (I still not 100% sure of what is is). After a steep learning curve, I managed to assemble a stack of docker containers. One is a NGINX server, the second is a Flask app that serves the front-end and the last one is the actual tensorflow-serving server. Take a look at the "Server" directory of this repo. 
+Once a model is exported. It can be served to the "real world" with tensorflow serving. Tensorflow serving is not the easiest thing to grasp. According to me, it is not well documented. Tensorflow serving is a program that enables to put your model on a server. This server accepts gRPC requests and returns the output of the model. In theory it sounds easy, in practice it not that easy. 
+
+Google released a binary that you can download using apt-get. This makes it much more easier. You just download this binary and execute. It will launch your server. This server expects to find exported models in the directory you specified. In this directory you simply copy-paste your saved model from earlier. That's it. You can customize it more, but it does the job for me.
+
+Now that's great. But it's not really user-friendly to ask your uses to make gRPC request to your server. That's why you also need a simple application that can link the two together. Here I implemented a simple Flask application, that displays a simple website and exposes a single API function `is_correct`. When you make a POST request to this end-point with a text, it splits your text into sentences and calls the tensorflow-serving server with each sentences. It then multiplies the correct probabilities together to have a global correctnes probability and finally returns it to the front-end application.
+
+All these application are bundle together using Docker Compose and live on a DigitalOcean (mini) droplet. 
 
 ## Front-end Application
 A basic front-end application that runs angularjs to take the text written and send an AJAX request to the Flask app. 
