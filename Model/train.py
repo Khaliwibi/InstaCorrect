@@ -60,7 +60,7 @@ def inference(string):
     """Perform an inference on the latest checkpoint available"""
     # Parameters given to the estimator. Mainly the size of the vocabulary
     # the embedding size to use and the (keep) drop out percentage
-    vocab = get_vocab('input/vocab.json')
+    vocab = get_vocab('../Data/data/vocab.json')
     model_params = {'vocab_size': len(vocab) + 1, 'embedding_size': 30, 
                     'dropout': 1}
     sentence = [vocab.get(char, -1) for char in list(string)]
@@ -90,19 +90,38 @@ def export():
     
 def input_inspection():
     """Inspect the inputs for inconsistency"""
-    reverse_vocab = get_vocab('input/reverse_vocab.json')
-    features, labels = input_fn("input/validation.tfrecord", 5, 1)
+
+    reverse_char_vocab = get_vocab('../Data/data/char_vocab_reve.json')
+    char_vocab = get_vocab('../Data/data/char_vocab_dict.json')
+    reverse_word_vocab = get_vocab('../Data/data/words_vocab_reve.json')
+    
+    features, labels = input_fn("../Data/data/validation.tfrecord", 5, 1)
     sess = tf.Session()
     feat, labl = sess.run([features, labels])
-    sentences = feat['sentence']
-    sequence_length = feat['sequence_length']
+    sentences = feat['sequence']
+    correct_input = labl['sequence_input']
+    correct_output = labl['sequence_output']
+    
+    pad_char = char_vocab['|PAD|']
     for i in range(sentences.shape[0]):
-        sentence = sentences[i,:]
-        sl = sequence_length[i]
-        label = labl[i]
-        sentence_str = "".join([reverse_vocab.get(str(num), "<UNK>") for num in sentence])
-        print('**** \n input: {str} \n sequence length: {sl} \n label: {label}'.
-              format(str=sentence_str, sl=str(sl), label=str(label)))
+        shape = sentences[i,:,:].shape
+        sentence = sentences[i,:,:].tolist()
+        for x in range(shape[0]):
+            for y in range(shape[1]):
+                if sentence[x][y] != pad_char:
+                    print(reverse_char_vocab.get(str(sentence[x][y]), '<UNK>'), end='')
+            print(' ', end='')
+        print('END')
+        print('****')
+    
+    for i in range(correct_input.shape[0]):
+        ids = correct_input[i,:].tolist()
+        words = [reverse_word_vocab.get(str(wid)) for wid in ids]
+        print(" ".join(words))
+        
+        ids = correct_output[i,:].tolist()
+        words = [reverse_word_vocab.get(str(wid)) for wid in ids]
+        print(" ".join(words))
 
 if __name__ == "__main__":
     

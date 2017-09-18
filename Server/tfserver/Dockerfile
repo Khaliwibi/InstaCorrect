@@ -46,5 +46,4 @@ ENTRYPOINT tensorflow_model_server --port=9000 --model_name=instacorrect --model
 
 # When starting the container do not forget to ADD THE VOLUME.
 # For example, you can start the container with the following command:
-# C:\Users\maxime\Documents\InstaCorrect\Model\output
 # docker run -p 9000:9000 -v user/Documents/Server/tfserver/models:/app/data/models maximedb/tensorflow-serving running_tf_server

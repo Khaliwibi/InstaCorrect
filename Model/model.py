@@ -5,43 +5,115 @@ Created on Tue Sep 12 12:40:12 2017
 @author: maxime
 """
 import tensorflow as tf
+from cell import ConvLSTMCell
 
 def cnnlstm(features, labels, mode, params):
     """
     Model to be used in the tf.estimator. Basically the machine learning model.
     Simple RNN model that:
-        - Embbeds the characters in a sentence
-        - Give the embeddings to a two layers RNN
-        - Add a softmax final layer on top of the last output of the RNN
-        - Predict if the sentence is correct or not based on a given label.
+        - Takes a sentence represented like ['This', 'is', 'a', 'sentence']
+          where each character in a word is represented by a integer and each word
+          in a batch has the same length (zero padded)
+        - One word at a time, each word is embedded using a CNN and a Highway 
+          network. (TODO: add the highway network)
+        - This embedding is given to a RNN
+        - The last state is given to another RNN (+ Attention over the previous
+          hidden state) that predicts the next word.
     
     Args:
-        - features: a dict containing two keys: 
-            - x: a tensor of shape [batch_size, max_sentence_length_in_batch]
-            padded with a given value.
-            - sl: a tensor fo shape [batch_size] with the original length of 
+        - features: a dict: 
+            - sequence: a tensor of shape [batch_size, max_sentence_length, max_word_size]
+            filled with the character ids, and padded with 0
+            - sequence_length: a tensor of shape [batch_size] with the original length of 
             the sequences.
-        - labels: a tensor of shape [batch_size] with 0 for correct sentences and
-        1 for uncorrect sentences
+            - max_word_size: tha maximum length of each word in the batch
+        - labels: a dict:
+            - sequence: a tensor of shape [batch_size, max_sentence_length] filled
+            with the words ids of each sentence and padded with 0.
+            - sequence_length: a tensor of shape [batch_size] with the original length of 
+            the sequences.
         - mode: the mode of the model (given by the estimator)
         - params: a dict with the following keys:
-            - vocab_size: the size of the vocabulary used
+            - vocab_size: the size of the character vocabulary used
             - embedding_size: the size of the embeddings
             - dropout: 1 - dropout probability (the keep probability)
     """
-    # Embeddings
-    with tf.name_scope("embedding"):
-        W = tf.Variable(tf.random_uniform([params['vocab_size'], params['embedding_size']], -1.0, 1.0), name="W")
-        embedded_chars = tf.nn.embedding_lookup(W, features['sentence'])
-
-    # RNN
-    cell_one = tf.contrib.rnn.LSTMCell(num_units=100)
-    cell_one = tf.contrib.rnn.DropoutWrapper(cell_one, output_keep_prob=params['dropout'])
-    cell_two = tf.contrib.rnn.LSTMCell(num_units=100)
-    cell_two = tf.contrib.rnn.DropoutWrapper(cell_two, output_keep_prob=params['dropout'])
-    cells = tf.contrib.rnn.MultiRNNCell([cell_one, cell_two])
-    outputs, last_states = tf.nn.dynamic_rnn(cell=cells, dtype=tf.float32, inputs=embedded_chars, sequence_length=features['sequence_length'])
-
+    ###########
+    # ENCODER #
+    ###########
+    # Characters embeddings matrix. Basically each character id (int)
+    # is associated a vector [char_embedding_size]
+    embeddings_c = tf.Variable(tf.random_uniform([params['char_vocab_size'], 
+                               params['char_embedding_size']], -1.0, 1.0))
+    # Embed every char id into their embedding. Will go from this dimension
+    # [batch_size, max_sequence_length, max_word_size] to this dimension
+    # [batch_size, max_sequence_length, max_word_size, char_embedding_size]
+    embedded_chars = tf.nn.embedding_lookup(embeddings_c, features['sequence'])
+    # Create the actual encoder. Which applies a convolution on the char input
+    # to have an embedding for each word. This embedding is then fed to the 
+    # classical LSMT RNN.
+    # TODO: apply dropout
+    cell = ConvLSTMCell(num_units=100, window_sizes=[2, 3, 4], num_filters=20, 
+                        embedding_size=params['char_embedding_size'])
+    # Loop over the inputs and apply the previously created cell at every 
+    # timestep. Returns the output at every step and last hidden state.
+    encoder_outputs, encoder_state = tf.nn.dynamic_rnn(cell=cell, dtype=tf.float32, 
+                                             inputs=embedded_chars, 
+                                             sequence_length=features['sequence_length'])
+    
+    ###########
+    # DECODER #
+    ###########
+    # Words embeddings matrix. Basically every word id (int) in the vocab
+    # is associated a vector [char_embedding_size]
+    embeddings_w = tf.Variable(tf.random_uniform([params['char_vocab_size'], 
+                               params['word_embedding_size']], -1.0, 1.0))
+    
+    # Decoder cell. Basic LSTM cell that will do the decoding.
+    decoder_cell = tf.nn.rnn_cell.BasicLSTMCell(num_units=100)
+    # Projection layer. Layer that takes the output of the decoder cell 
+    # and projects it on the word vocab dimension.
+    projection_layer = tf.layers.dense(params['word_vocab_size'], use_bias=False)
+    # If not at infering mode, use the decoder_inputs
+    # output at each time step.
+    if mode != tf.estimator.ModeKeys.INFER:
+        # Decoder outputs, i.e., what we are trying to predict.
+        decoder_o = labels['sequence_output']
+        # Embed the decoder input
+        decoder_i = tf.nn.embedding_lookup(embeddings_w, labels['sequence_input'])
+        # Helper method. Basically a function that "helps" the decoder
+        # at each time step by giving it the true input, whatever it computed
+        # earlier.
+        helper = tf.contrib.seq2seq.TrainingHelper(decoder_i, labels['sequence_length'])
+    else:
+        # Helper method. At inference time it is different, we do not have the
+        # true inputs, so this function will take the previously generated output
+        # and embbed it with the decoder embeddings.
+        helper = tf.contrib.seq2seq.GreedyEmbeddingHelper(embeddings_w, 
+                            params['start_token'], params['end_token'])
+    # The final decoder, with its cell, its intial state, its helper function,
+    # and its projection layer. 
+    decoder = tf.contrib.seq2seq.BasicDecoder(decoder_cell, helper, 
+                                              encoder_state, 
+                                              output_layer=projection_layer)
+    # Use this decoder to perform a dynamic decode.
+    outputs, state, sequence_lengths = tf.contrib.seq2seq.dynamic_decode(decoder)   
+    logits = outputs.rnn_output
+    sample_id = outputs.sample_id
+    
+    if mode != tf.estimator.ModeKeys.INFER:
+    crossent = tf.nn.sparse_softmax_cross_entropy_with_logits(
+                                labels=decoder_o, logits=logits)
+    
+    target_w = tf.sequence_mask(labels['sequence_length'], dtype=logits.dtype)
+    train_loss = (tf.reduce_sum(crossent * target_w) / batch_size)
+    
+    
+    
+    
+    
+    
+    
     # Output
     batch_range = tf.range(tf.shape(outputs)[0])
     indices = tf.stack([tf.cast(batch_range, tf.int64), features['sequence_length'] - 1], axis=1)
