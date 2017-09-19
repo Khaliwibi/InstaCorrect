@@ -43,7 +43,7 @@ with io.open("data/europarl-v7.fr-en.fr", 'r', encoding='utf8') as fin:
         i += 1
         if i % 10000 == 0:
             print('Starting line number {i}'.format(i=str(i)))
-            break
+            #break
 
 validation_writer.close()
 testing_writer.close()

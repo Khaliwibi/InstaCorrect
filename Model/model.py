@@ -97,61 +97,54 @@ def cnnlstm(features, labels, mode, params):
                                               encoder_state, 
                                               output_layer=projection_layer)
     # Use this decoder to perform a dynamic decode.
+    # Dynamic Decoder: controls the flow of operations and mainly store the outputs
+    # and keeps decoding until the decoder is done.
+    # Decoder: kind of the cell of the dynacmic decoder. It passes the inputs
+    # to the RNN, samples the output of the RNN and computes the next input.
+    # To sample and compute the next inputs, the decoder uses a Helper function.
+    # During training it is a TrainingHelper and during inference it is GreedyEmbeddingHelper
+    # In our case the sampling is simply taking the argmax of the output logit.
+    # The main difference between the two helpers is on the way they "compute" 
+    # the next input. TrainingHelper will use the decoder inputs provided while 
+    # the GreedyEmbeddingHelper will use the sampled RNN output and give it to
+    # an embedding function to give it at as the next input. 
+    # Outputs of the BasicDecoder is a BasicDecoderOutput which holds the logits
+    # and the sample_ids.
     outputs, state, sequence_lengths = tf.contrib.seq2seq.dynamic_decode(decoder)   
-    logits = outputs.rnn_output
-    sample_id = outputs.sample_id
-    
-    if mode != tf.estimator.ModeKeys.INFER:
-    crossent = tf.nn.sparse_softmax_cross_entropy_with_logits(
-                                labels=decoder_o, logits=logits)
-    
-    target_w = tf.sequence_mask(labels['sequence_length'], dtype=logits.dtype)
-    train_loss = (tf.reduce_sum(crossent * target_w) / batch_size)
-    
-    
-    
-    
-    
-    
-    
-    # Output
-    batch_range = tf.range(tf.shape(outputs)[0])
-    indices = tf.stack([tf.cast(batch_range, tf.int64), features['sequence_length'] - 1], axis=1)
-    last_output = tf.gather_nd(outputs, indices)
-
-    # Final Layer
-    logits = tf.layers.dense(inputs=last_output, units=2)
-    softmax = tf.nn.softmax(logits)
-
-    # Predictions
-    classes = tf.argmax(input=softmax, axis=1)
-    predictions = {"classes": classes, "probabilities": tf.nn.softmax(logits, name="softmax_tensor")}
-    if mode == tf.estimator.ModeKeys.PREDICT:
+    # Contains the 
+    logits = outputs.rnn_output # output of the projection layer
+    sample_id = outputs.sample_id # argmax of the logits
+    # If we are INFER time only
+    if mode == tf.estimator.ModeKeys.INFER: 
+        # Return a dict with the sample word ids.
+        predictions = {"sequence": sample_id}
         export_outputs = {
             'prediction': tf.estimator.export.PredictOutput(predictions)
         }
-        return tf.estimator.EstimatorSpec(mode=mode, predictions=predictions, export_outputs=export_outputs)
-
-    # Loss
-    onehot_labels = tf.one_hot(indices=tf.cast(labels, tf.int32), depth=2)
-    loss = tf.losses.softmax_cross_entropy(onehot_labels=onehot_labels, logits=logits)
-
-    # Summary
-    #correct_prediction = tf.equal(tf.cast(labels, tf.int32), tf.cast(classes, tf.int32))
-    correct_prediction = tf.equal(labels, classes)
-    accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
-    tf.summary.scalar("loss", loss)
-    tf.summary.scalar("accuracy", accuracy)
-    tf.summary.merge_all()
-
-    # Loss Minimization
+        return tf.estimator.EstimatorSpec(mode=mode, predictions=predictions, 
+                                          export_outputs=export_outputs)
+    
+    # We are not at INFER time. We compute the cross entropy.
+    crossent = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=decoder_o, 
+                                                              logits=logits)
+    # Here we create a mask to "erase" the loss where the sentences are finished
+    target_w = tf.sequence_mask(labels['sequence_length'], dtype=logits.dtype)
+    # We apply the mask and sum the loss accross all the dimensions and divide it
+    # by the batch size to make it independent of the batch_size.
+    loss = (tf.reduce_sum(crossent * target_w) / tf.shape(decoder_i)[0])
+    
+    # At train time only.
     if mode == tf.estimator.ModeKeys.TRAIN:
+        # Initialize an optimize that has for goal to minimize the loss
         optimizer = tf.train.AdamOptimizer(0.001)
+        # Apply gradient clipping
         gradients, variables = zip(*optimizer.compute_gradients(loss))
         gradients, _ = tf.clip_by_global_norm(gradients, 5.0)
-        train_op = optimizer.apply_gradients(zip(gradients, variables), global_step=tf.train.get_global_step())
+        train_op = optimizer.apply_gradients(zip(gradients, variables), 
+                                             global_step=tf.train.get_global_step())
         return tf.estimator.EstimatorSpec(mode=mode, loss=loss, train_op=train_op)
-
-    # Add evaluation metrics (for EVAL mode)
-    eval_metric_ops = {"accuracy": tf.metrics.accuracy(labels=labels, predictions=predictions["classes"])}
+        
+    # Compute the accuracy of the model (the number of sequences that the model
+    # got right)
+    eval_metric_ops = {"accuracy": tf.metrics.accuracy(labels=decoder_o, predictions=sample_id)}
     return tf.estimator.EstimatorSpec(mode=mode, loss=loss, eval_metric_ops=eval_metric_ops)
