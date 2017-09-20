@@ -15,11 +15,17 @@ def get_vocab(filename):
 
 def train():
     """Perform the training of the model"""
-    vocab = get_vocab('input/vocab.json')
+    char_vocab = get_vocab('../Data/data/char_vocab_dict.json')
+    word_vocab = get_vocab('../Data/data/words_vocab_dict.json')
     # Parameters given to the estimator. Mainly the size of the vocabulary
     # the embedding size to use and the (keep) drop out percentage
-    model_params = {'vocab_size': len(vocab) + 1, 'embedding_size': 30, 
-                    'dropout': 0.75}
+    model_params = {'char_vocab_size': len(char_vocab), 
+                    'char_embedding_size': 30, 
+                    'dropout': 0.75,
+                    'word_vocab_size': len(word_vocab),
+                    'word_embedding_size': 100,
+                    'start_token': word_vocab['|GOO|'],
+                    'end_token': word_vocab['|EOS|']}
     # The batch size to use for the train/valid/test set
     batch = 64
     # The number of times to train the model on the entire dataset    
@@ -27,8 +33,8 @@ def train():
     # The part of the dataset that will be skipped to be used by the training
     # and testing dataset
     # Lambda function used in the experiment. Returns a dataset iterator
-    data_train = lambda: input_fn("input/training.tfrecord", batch, epochs)
-    data_valid = lambda: input_fn("input/validation.tfrecord", batch, epochs)
+    data_train = lambda: input_fn("../Data/data/training.tfrecord", batch, epochs)
+    data_valid = lambda: input_fn("../Data/data/validation.tfrecord", batch, epochs)
 
     # Set the TF_CONFIG environment to local to avoid bugs
     os.environ['TF_CONFIG'] = json.dumps({'environment': 'local'})

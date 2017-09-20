@@ -49,6 +49,42 @@ def cnnlstm(features, labels, mode, params):
     # [batch_size, max_sequence_length, max_word_size] to this dimension
     # [batch_size, max_sequence_length, max_word_size, char_embedding_size]
     embedded_chars = tf.nn.embedding_lookup(embeddings_c, features['sequence'])
+    print('embedded_chars',embedded_chars)
+    # Do a convolution on the inputs
+    pooled_outputs = []
+    for i, window_size in enumerate(self._window_sizes):
+        with tf.name_scope("conv-maxpool-%s" % self._num_filters):
+            # Convolution Layer. 
+            # Inputs are [batch_size, max_word_length, embedding_size]
+            # Should apply a 1D convolution with padding = "SAME" to have
+            # the same size as the input. Will return a tensor of shape
+            # [batch_size, max_word_length, num_filters] on which we apply
+            # a max over time pooling -> i.e. a reduce_max over the second
+            # dimension.
+            conv = tf.layers.conv1d(
+                inputs,
+                filters=self._num_filters, # the number of filters to apply
+                kernel_size=[window_size], # the kernel size.
+                use_bias=True,
+                padding="SAME",
+                activation=tf.nn.relu,
+                name="conv-{i}".format(i=str(i)))
+            print('Conv layer', conv)
+            print('Input shape', inputs.get_shape())
+            # Max-pooling over the outputs. Just take the maximum for each
+            # filter along the max_word_length dimension. Will return a tensor
+            # of shape [batch_size, num_filters] -> so identitical whatever
+            # the word length. Clever Kim.
+            max_pooled = tf.reduce_max(conv, 1) 
+            print('Max pooled', max_pooled)
+#                pooled = tf.layers.max_pooling1d(
+#                    conv,
+#                    pool_size=[conv.get_shape()[1]],
+#                    strides=filter_size,
+#                    name="pool")
+#                print('Pooled layer', pooled)
+            # Append the result to the global results.
+            pooled_outputs.append(max_pooled)
     # Create the actual encoder. Which applies a convolution on the char input
     # to have an embedding for each word. This embedding is then fed to the 
     # classical LSMT RNN.
