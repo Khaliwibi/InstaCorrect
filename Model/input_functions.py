@@ -78,6 +78,8 @@ def input_fn(filenames, batch_size, num_epochs):
     dataset = tf.contrib.data.TFRecordDataset(filenames)
     # Map the tf.example to tensor using the _parse_function
     dataset = dataset.map(_parse_function, num_threads=4)
+    # Repeat the dataset for a given number of epoch
+    dataset = dataset.repeat(num_epochs)
     # Create an arbitrary bucket range.
     buckets = [tf.constant(num, dtype=tf.int64) for num in range(0, 100, 5)]
     # Number of elements per bucket.
@@ -103,8 +105,6 @@ def input_fn(filenames, batch_size, num_epochs):
     dataset = dataset.map(lambda a, b, c, d, e, f: 
         ({"sequence_input": a, "sequence_output": b, "sequence_length": c}, 
          {"sequence": d, "sequence_length": e, "max_word_length": f}))
-    # Repeat the dataset for a given number of epoch
-    dataset = dataset.repeat(num_epochs)
     # Create the iterator to enumerate the elements of the dataset.
     iterator = dataset.make_one_shot_iterator()
     # Generator returned by the iterator.

@@ -55,15 +55,11 @@ def body(i, inputs, outputs):
     # Return the variables.
     return i, inputs, outputs
 
-r = tf.while_loop(c, body, [i, inputs, outputs], 
-      shape_invariants=[i.get_shape(), 
-                        inputs.get_shape(), 
-                        tf.TensorShape([None, None, None])])
+i, inputs, outputs = tf.while_loop(c, 
+                                   body, 
+                                   [i, inputs, outputs], 
+                                   shape_invariants=[i.get_shape(), 
+                                                     inputs.get_shape(), 
+                                                     tf.TensorShape([None, None, None])])
+    
 
-
-conv = tf.layers.conv1d(inputs[:,i,:,:],
-                     filters=15,
-                     padding='same',
-                     kernel_size=2)
-
-max_pooled = tf.reduce_max(conv, 1) 

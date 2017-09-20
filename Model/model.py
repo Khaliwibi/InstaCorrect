@@ -5,7 +5,8 @@ Created on Tue Sep 12 12:40:12 2017
 @author: maxime
 """
 import tensorflow as tf
-from cell import ConvLSTMCell
+from convolution import Convolution
+from tensorflow.python.layers.core import Dense
 
 def cnnlstm(features, labels, mode, params):
     """
@@ -38,6 +39,7 @@ def cnnlstm(features, labels, mode, params):
             - embedding_size: the size of the embeddings
             - dropout: 1 - dropout probability (the keep probability)
     """
+    batch_size = tf.shape(features['sequence'])[0]
     ###########
     # ENCODER #
     ###########
@@ -49,52 +51,18 @@ def cnnlstm(features, labels, mode, params):
     # [batch_size, max_sequence_length, max_word_size] to this dimension
     # [batch_size, max_sequence_length, max_word_size, char_embedding_size]
     embedded_chars = tf.nn.embedding_lookup(embeddings_c, features['sequence'])
-    print('embedded_chars',embedded_chars)
     # Do a convolution on the inputs
-    pooled_outputs = []
-    for i, window_size in enumerate(self._window_sizes):
-        with tf.name_scope("conv-maxpool-%s" % self._num_filters):
-            # Convolution Layer. 
-            # Inputs are [batch_size, max_word_length, embedding_size]
-            # Should apply a 1D convolution with padding = "SAME" to have
-            # the same size as the input. Will return a tensor of shape
-            # [batch_size, max_word_length, num_filters] on which we apply
-            # a max over time pooling -> i.e. a reduce_max over the second
-            # dimension.
-            conv = tf.layers.conv1d(
-                inputs,
-                filters=self._num_filters, # the number of filters to apply
-                kernel_size=[window_size], # the kernel size.
-                use_bias=True,
-                padding="SAME",
-                activation=tf.nn.relu,
-                name="conv-{i}".format(i=str(i)))
-            print('Conv layer', conv)
-            print('Input shape', inputs.get_shape())
-            # Max-pooling over the outputs. Just take the maximum for each
-            # filter along the max_word_length dimension. Will return a tensor
-            # of shape [batch_size, num_filters] -> so identitical whatever
-            # the word length. Clever Kim.
-            max_pooled = tf.reduce_max(conv, 1) 
-            print('Max pooled', max_pooled)
-#                pooled = tf.layers.max_pooling1d(
-#                    conv,
-#                    pool_size=[conv.get_shape()[1]],
-#                    strides=filter_size,
-#                    name="pool")
-#                print('Pooled layer', pooled)
-            # Append the result to the global results.
-            pooled_outputs.append(max_pooled)
+    conv = Convolution()
+    convoluted_inputs = conv(embedded_chars)
     # Create the actual encoder. Which applies a convolution on the char input
     # to have an embedding for each word. This embedding is then fed to the 
     # classical LSMT RNN.
     # TODO: apply dropout
-    cell = ConvLSTMCell(num_units=100, window_sizes=[2, 3, 4], num_filters=20, 
-                        embedding_size=params['char_embedding_size'])
+    cell = tf.contrib.rnn.LSTMCell(num_units=100)
     # Loop over the inputs and apply the previously created cell at every 
     # timestep. Returns the output at every step and last hidden state.
     encoder_outputs, encoder_state = tf.nn.dynamic_rnn(cell=cell, dtype=tf.float32, 
-                                             inputs=embedded_chars, 
+                                             inputs=convoluted_inputs, 
                                              sequence_length=features['sequence_length'])
     
     ###########
@@ -107,30 +75,41 @@ def cnnlstm(features, labels, mode, params):
     
     # Decoder cell. Basic LSTM cell that will do the decoding.
     decoder_cell = tf.nn.rnn_cell.BasicLSTMCell(num_units=100)
+    # Attention mechanism
+    attention_mechanism = tf.contrib.seq2seq.LuongAttention(num_units=100, 
+                                memory=encoder_outputs,
+                                memory_sequence_length=features['sequence_length'])
+    # Attention Wrapper
+    attn_cell = tf.contrib.seq2seq.AttentionWrapper(decoder_cell, attention_mechanism)
+    initial_decoder_state = attn_cell.zero_state(batch_size, tf.float32)
     # Projection layer. Layer that takes the output of the decoder cell 
     # and projects it on the word vocab dimension.
-    projection_layer = tf.layers.dense(params['word_vocab_size'], use_bias=False)
+    projection_layer = Dense(params['word_vocab_size'], use_bias=False)
     # If not at infering mode, use the decoder_inputs
     # output at each time step.
-    if mode != tf.estimator.ModeKeys.INFER:
+    if mode != tf.estimator.ModeKeys.PREDICT:
         # Decoder outputs, i.e., what we are trying to predict.
-        decoder_o = labels['sequence_output']
+        decoder_o = tf.cast(labels['sequence_output'], tf.int32)
         # Embed the decoder input
         decoder_i = tf.nn.embedding_lookup(embeddings_w, labels['sequence_input'])
         # Helper method. Basically a function that "helps" the decoder
         # at each time step by giving it the true input, whatever it computed
         # earlier.
-        helper = tf.contrib.seq2seq.TrainingHelper(decoder_i, labels['sequence_length'])
+        output_sequence_length = tf.cast(labels['sequence_length'], tf.int32)
+        helper = tf.contrib.seq2seq.TrainingHelper(decoder_i, output_sequence_length)
     else:
         # Helper method. At inference time it is different, we do not have the
         # true inputs, so this function will take the previously generated output
         # and embbed it with the decoder embeddings.
+        start_token = tf.fill([batch_size], params['start_token'])
+        print(start_token)
+        end_token = tf.cast(params['end_token'], tf.int32)
         helper = tf.contrib.seq2seq.GreedyEmbeddingHelper(embeddings_w, 
-                            params['start_token'], params['end_token'])
+                            start_token, end_token)
     # The final decoder, with its cell, its intial state, its helper function,
     # and its projection layer. 
-    decoder = tf.contrib.seq2seq.BasicDecoder(decoder_cell, helper, 
-                                              encoder_state, 
+    decoder = tf.contrib.seq2seq.BasicDecoder(attn_cell, helper, 
+                                              initial_decoder_state, 
                                               output_layer=projection_layer)
     # Use this decoder to perform a dynamic decode.
     # Dynamic Decoder: controls the flow of operations and mainly store the outputs
@@ -146,12 +125,15 @@ def cnnlstm(features, labels, mode, params):
     # an embedding function to give it at as the next input. 
     # Outputs of the BasicDecoder is a BasicDecoderOutput which holds the logits
     # and the sample_ids.
-    outputs, state, sequence_lengths = tf.contrib.seq2seq.dynamic_decode(decoder)   
+    max_iterations = tf.cast(tf.reduce_max(features['sequence_length']) + 20, tf.int32)
+    print(max_iterations)
+    outputs, state, sequence_lengths = tf.contrib.seq2seq.dynamic_decode(decoder,
+                                                maximum_iterations=max_iterations)   
     # Contains the 
     logits = outputs.rnn_output # output of the projection layer
     sample_id = outputs.sample_id # argmax of the logits
     # If we are INFER time only
-    if mode == tf.estimator.ModeKeys.INFER: 
+    if mode == tf.estimator.ModeKeys.PREDICT: 
         # Return a dict with the sample word ids.
         predictions = {"sequence": sample_id}
         export_outputs = {
@@ -167,12 +149,13 @@ def cnnlstm(features, labels, mode, params):
     target_w = tf.sequence_mask(labels['sequence_length'], dtype=logits.dtype)
     # We apply the mask and sum the loss accross all the dimensions and divide it
     # by the batch size to make it independent of the batch_size.
-    loss = (tf.reduce_sum(crossent * target_w) / tf.shape(decoder_i)[0])
+    batch_size = tf.cast(tf.shape(decoder_i)[0], tf.float32)
+    loss = (tf.reduce_sum(crossent * target_w) / batch_size)
     
     # At train time only.
     if mode == tf.estimator.ModeKeys.TRAIN:
         # Initialize an optimize that has for goal to minimize the loss
-        optimizer = tf.train.AdamOptimizer(0.001)
+        optimizer = tf.train.AdamOptimizer(0.0001)
         # Apply gradient clipping
         gradients, variables = zip(*optimizer.compute_gradients(loss))
         gradients, _ = tf.clip_by_global_norm(gradients, 5.0)
@@ -182,5 +165,6 @@ def cnnlstm(features, labels, mode, params):
         
     # Compute the accuracy of the model (the number of sequences that the model
     # got right)
-    eval_metric_ops = {"accuracy": tf.metrics.accuracy(labels=decoder_o, predictions=sample_id)}
+    eval_metric_ops = {"accuracy": tf.metrics.accuracy(labels=decoder_o, 
+                                                       predictions=sample_id)}
     return tf.estimator.EstimatorSpec(mode=mode, loss=loss, eval_metric_ops=eval_metric_ops)

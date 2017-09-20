@@ -40,7 +40,7 @@ with io.open("data/europarl-v7.fr-en.fr", 'r', encoding='utf8') as fin:
 # We now have two counters. We need to convert these to regular dict that we
 # will export as JSON objects.
 # For the words we will only take the most common 50.000 words
-words_vocab_most = word_vocab.most_common(100000) # Returns a list [(word, freq)]
+words_vocab_most = word_vocab.most_common(50000) # Returns a list [(word, freq)]
 # Order the words by frequency.
 words_vocab_sort = [x[0] for x in words_vocab_most]
 words_vocab_sort.insert(0, '|UNK|') # Will be 3
