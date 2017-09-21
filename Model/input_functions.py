@@ -65,7 +65,7 @@ def reduc_fn(key, elements, window_size):
     """Receives `window_size` elements"""
     return elements.shuffle(window_size, seed=0)
 
-def input_fn(filenames, batch_size, num_epochs):
+def input_fn(filenames, batch_size, num_epochs, take=None):
     """
     Function to perform the data pipeline for the model.
     Should be wrapped around an anonymous function to set the parameters.
@@ -80,6 +80,9 @@ def input_fn(filenames, batch_size, num_epochs):
     dataset = dataset.map(_parse_function, num_threads=4)
     # Repeat the dataset for a given number of epoch
     dataset = dataset.repeat(num_epochs)
+    # If applicable only take `take`
+    if take is not None:
+        dataset = dataset.take(take)
     # Create an arbitrary bucket range.
     buckets = [tf.constant(num, dtype=tf.int64) for num in range(0, 100, 5)]
     # Number of elements per bucket.

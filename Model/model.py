@@ -8,6 +8,12 @@ import tensorflow as tf
 from convolution import Convolution
 from tensorflow.python.layers.core import Dense
 
+def create_cell(mode, dropout, num_units):
+    cell = tf.contrib.rnn.LSTMCell(num_units=num_units)
+    if mode != tf.estimator.ModeKeys.PREDICT:
+        cell = tf.contrib.rnn.DropoutWrapper(cell, input_keep_prob=0.8)
+    return cell
+
 def cnnlstm(features, labels, mode, params):
     """
     Model to be used in the tf.estimator. Basically the machine learning model.
@@ -40,6 +46,10 @@ def cnnlstm(features, labels, mode, params):
             - dropout: 1 - dropout probability (the keep probability)
     """
     batch_size = tf.shape(features['sequence'])[0]
+    timesteps = tf.shape(features['sequence'])[1]
+    dropout = params['dropout']
+    hidden_size = params['hidden_size']
+    network_depth = params['network_depth']
     ###########
     # ENCODER #
     ###########
@@ -58,7 +68,8 @@ def cnnlstm(features, labels, mode, params):
     # to have an embedding for each word. This embedding is then fed to the 
     # classical LSMT RNN.
     # TODO: apply dropout
-    cell = tf.contrib.rnn.LSTMCell(num_units=100)
+    cell_list = [create_cell(mode, dropout, hidden_size) for _ in range(network_depth)]
+    cell = tf.contrib.rnn.MultiRNNCell(cell_list)
     # Loop over the inputs and apply the previously created cell at every 
     # timestep. Returns the output at every step and last hidden state.
     encoder_outputs, encoder_state = tf.nn.dynamic_rnn(cell=cell, dtype=tf.float32, 
@@ -74,14 +85,15 @@ def cnnlstm(features, labels, mode, params):
                                params['word_embedding_size']], -1.0, 1.0))
     
     # Decoder cell. Basic LSTM cell that will do the decoding.
-    decoder_cell = tf.nn.rnn_cell.BasicLSTMCell(num_units=100)
+    cell_list_dec = [create_cell(mode, dropout, hidden_size) for _ in range(network_depth)]
+    decoder_cell = cell = tf.contrib.rnn.MultiRNNCell(cell_list_dec)
     # Attention mechanism
-    attention_mechanism = tf.contrib.seq2seq.LuongAttention(num_units=100, 
+    attention_mechanism = tf.contrib.seq2seq.LuongAttention(num_units=hidden_size, 
                                 memory=encoder_outputs,
                                 memory_sequence_length=features['sequence_length'])
     # Attention Wrapper
     attn_cell = tf.contrib.seq2seq.AttentionWrapper(decoder_cell, attention_mechanism)
-    initial_decoder_state = attn_cell.zero_state(batch_size, tf.float32)
+    initial_decoder_state = attn_cell.zero_state(batch_size, tf.float32).clone(cell_state=encoder_state)
     # Projection layer. Layer that takes the output of the decoder cell 
     # and projects it on the word vocab dimension.
     projection_layer = Dense(params['word_vocab_size'], use_bias=False)
@@ -102,7 +114,6 @@ def cnnlstm(features, labels, mode, params):
         # true inputs, so this function will take the previously generated output
         # and embbed it with the decoder embeddings.
         start_token = tf.fill([batch_size], params['start_token'])
-        print(start_token)
         end_token = tf.cast(params['end_token'], tf.int32)
         helper = tf.contrib.seq2seq.GreedyEmbeddingHelper(embeddings_w, 
                             start_token, end_token)
@@ -125,9 +136,11 @@ def cnnlstm(features, labels, mode, params):
     # an embedding function to give it at as the next input. 
     # Outputs of the BasicDecoder is a BasicDecoderOutput which holds the logits
     # and the sample_ids.
-    max_iterations = tf.cast(tf.reduce_max(features['sequence_length']) + 20, tf.int32)
-    print(max_iterations)
-    outputs, state, sequence_lengths = tf.contrib.seq2seq.dynamic_decode(decoder,
+    if mode != tf.estimator.ModeKeys.PREDICT:
+        outputs, state, sequence_lengths = tf.contrib.seq2seq.dynamic_decode(decoder)
+    else:
+        max_iterations = tf.cast(tf.reduce_max(features['sequence_length'])*2, tf.int32)
+        outputs, state, sequence_lengths = tf.contrib.seq2seq.dynamic_decode(decoder,
                                                 maximum_iterations=max_iterations)   
     # Contains the 
     logits = outputs.rnn_output # output of the projection layer
@@ -149,13 +162,14 @@ def cnnlstm(features, labels, mode, params):
     target_w = tf.sequence_mask(labels['sequence_length'], dtype=logits.dtype)
     # We apply the mask and sum the loss accross all the dimensions and divide it
     # by the batch size to make it independent of the batch_size.
-    batch_size = tf.cast(tf.shape(decoder_i)[0], tf.float32)
-    loss = (tf.reduce_sum(crossent * target_w) / batch_size)
+    batch_size_32 = tf.cast(batch_size, tf.float32)
+    timesteps_32 = tf.cast(timesteps, tf.float32)
+    loss = (tf.reduce_sum(crossent * target_w) / (batch_size_32+timesteps_32))
     
     # At train time only.
     if mode == tf.estimator.ModeKeys.TRAIN:
         # Initialize an optimize that has for goal to minimize the loss
-        optimizer = tf.train.AdamOptimizer(0.0001)
+        optimizer = tf.train.AdamOptimizer(params['learning_rate'])
         # Apply gradient clipping
         gradients, variables = zip(*optimizer.compute_gradients(loss))
         gradients, _ = tf.clip_by_global_norm(gradients, 5.0)
