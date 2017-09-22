@@ -155,7 +155,7 @@ class Mistake(object):
         return self.one_by_the_other(sentence_str, 'parce que', 'parce')
 
     def _m_ale_mistake(self, sentence_str):
-        return self.one_by_the_other(sentence_str, ' au ', u'à le')
+        return self.one_by_the_other(sentence_str, ' au ', u' à le ')
 
     def _m_mistake_ee(self, sentence_str):
         sentence = word_tokenize(sentence_str)
@@ -178,7 +178,7 @@ class Mistake(object):
         found = False
         for i in rg:
             if sentence[i].endswith("i"):
-                sentence[i] = sentence[i]+"it"
+                sentence[i] = sentence[i]+"t"
                 found = True
             elif sentence[i].endswith("it"):
                 sentence[i] = sentence[i][:-1]
@@ -192,7 +192,7 @@ class Mistake(object):
         found = False
         for i in rg:
             if sentence[i].endswith("i"):
-                sentence[i] = sentence[i]+"is"
+                sentence[i] = sentence[i]+"s"
                 found = True
             elif sentence[i].endswith("is"):
                 sentence[i] = sentence[i][:-1]+"t"
